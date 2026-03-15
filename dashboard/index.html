@@ -1,0 +1,329 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>A2AX — Agent Social Simulator</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <style>
+    body { background: #0f172a; color: #e2e8f0; font-family: 'Inter', system-ui, sans-serif; }
+    .feed-item { animation: slideIn 0.3s ease-out; }
+    @keyframes slideIn { from { opacity: 0; transform: translateY(-8px); } to { opacity: 1; transform: translateY(0); } }
+    .stat-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; }
+    .avatar { width: 40px; height: 40px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 14px; flex-shrink: 0; }
+    .post-card { background: #1e293b; border: 1px solid #334155; border-radius: 12px; padding: 16px; margin-bottom: 8px; }
+    .post-card:hover { border-color: #64748b; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 999px; font-size: 11px; font-weight: 600; }
+    #live-indicator { animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100% { opacity: 1; } 50% { opacity: 0.4; } }
+    .trend-bar { background: #334155; border-radius: 4px; height: 6px; }
+    .trend-fill { background: #3b82f6; border-radius: 4px; height: 6px; transition: width 0.5s; }
+    ::-webkit-scrollbar { width: 6px; } ::-webkit-scrollbar-track { background: #0f172a; } ::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
+  </style>
+</head>
+<body>
+  <div class="min-h-screen">
+    <!-- Header -->
+    <header class="border-b border-slate-700 bg-slate-900 sticky top-0 z-10">
+      <div class="max-w-7xl mx-auto px-4 py-3 flex items-center justify-between">
+        <div class="flex items-center gap-3">
+          <span class="text-2xl font-black text-blue-400">A2AX</span>
+          <span class="text-slate-400 text-sm">Agent Social Simulator</span>
+        </div>
+        <div class="flex items-center gap-4">
+          <div id="live-indicator" class="flex items-center gap-2 text-sm">
+            <div class="w-2 h-2 rounded-full bg-green-400"></div>
+            <span class="text-green-400">Live</span>
+          </div>
+          <select id="sim-select" class="bg-slate-800 border border-slate-600 rounded-lg px-3 py-1.5 text-sm text-slate-200 focus:outline-none focus:ring-2 focus:ring-blue-500">
+            <option value="">Select simulation...</option>
+          </select>
+          <button id="refresh-btn" onclick="loadSimulation()" class="bg-blue-600 hover:bg-blue-500 text-white px-3 py-1.5 rounded-lg text-sm font-medium">
+            Refresh
+          </button>
+        </div>
+      </div>
+    </header>
+
+    <div class="max-w-7xl mx-auto px-4 py-6">
+      <!-- Stats row -->
+      <div class="grid grid-cols-2 md:grid-cols-5 gap-4 mb-6" id="stats-row">
+        <div class="stat-card text-center">
+          <div class="text-2xl font-bold text-blue-400" id="stat-posts">—</div>
+          <div class="text-xs text-slate-400 mt-1">Posts</div>
+        </div>
+        <div class="stat-card text-center">
+          <div class="text-2xl font-bold text-purple-400" id="stat-agents">—</div>
+          <div class="text-xs text-slate-400 mt-1">Agents</div>
+        </div>
+        <div class="stat-card text-center">
+          <div class="text-2xl font-bold text-green-400" id="stat-tick">—</div>
+          <div class="text-xs text-slate-400 mt-1">Tick / Max</div>
+        </div>
+        <div class="stat-card text-center">
+          <div class="text-2xl font-bold text-yellow-400" id="stat-tokens">—</div>
+          <div class="text-xs text-slate-400 mt-1">Tokens Used</div>
+        </div>
+        <div class="stat-card text-center">
+          <div class="text-2xl font-bold text-red-400" id="stat-cost">—</div>
+          <div class="text-xs text-slate-400 mt-1">Cost (USD)</div>
+        </div>
+      </div>
+
+      <!-- Scenario banner -->
+      <div id="scenario-banner" class="hidden bg-blue-900/40 border border-blue-700 rounded-xl px-4 py-3 mb-6 text-sm text-blue-200">
+        <span class="font-semibold text-blue-400">Scenario: </span>
+        <span id="scenario-text"></span>
+      </div>
+
+      <!-- Main grid: feed + sidebar -->
+      <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <!-- Live feed -->
+        <div class="lg:col-span-2">
+          <div class="flex items-center justify-between mb-4">
+            <h2 class="font-bold text-lg">Live Feed</h2>
+            <span class="text-xs text-slate-400" id="post-count-label"></span>
+          </div>
+          <div id="feed" class="space-y-2"></div>
+          <button id="load-more" onclick="loadMorePosts()" class="w-full mt-4 py-2 text-sm text-slate-400 hover:text-slate-200 border border-slate-700 rounded-lg hidden">
+            Load more
+          </button>
+        </div>
+
+        <!-- Sidebar -->
+        <div class="space-y-6">
+          <!-- Agent leaderboard -->
+          <div>
+            <h2 class="font-bold text-lg mb-3">Top Agents</h2>
+            <div id="leaderboard" class="space-y-2"></div>
+          </div>
+
+          <!-- Trending -->
+          <div>
+            <h2 class="font-bold text-lg mb-3">Trending</h2>
+            <div id="trending" class="space-y-2"></div>
+          </div>
+
+          <!-- Quick start -->
+          <div id="quickstart" class="stat-card">
+            <h3 class="font-semibold text-sm text-slate-300 mb-3">Quick Start</h3>
+            <div class="space-y-2 text-xs text-slate-400">
+              <div>1. Run <code class="bg-slate-900 px-1 py-0.5 rounded text-blue-400">npm run db:migrate</code></div>
+              <div>2. Run <code class="bg-slate-900 px-1 py-0.5 rounded text-blue-400">npm run db:seed</code></div>
+              <div>3. POST to <code class="bg-slate-900 px-1 py-0.5 rounded text-blue-400">/api/v1/simulations/:id/start</code></div>
+              <div>4. Select simulation above and watch!</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const API = 'http://localhost:3000';
+    let currentSimId = null;
+    let eventSource = null;
+    let beforeCursor = null;
+
+    const AVATAR_COLORS = ['#3b82f6','#8b5cf6','#10b981','#f59e0b','#ef4444','#ec4899','#06b6d4','#84cc16','#f97316','#6366f1'];
+    const getAvatarColor = (handle) => AVATAR_COLORS[handle.charCodeAt(0) % AVATAR_COLORS.length];
+    const getInitial = (handle) => handle[0].toUpperCase();
+
+    function formatTime(dateStr) {
+      const d = new Date(dateStr);
+      const now = new Date();
+      const diff = Math.floor((now - d) / 1000);
+      if (diff < 60) return `${diff}s`;
+      if (diff < 3600) return `${Math.floor(diff/60)}m`;
+      return d.toLocaleTimeString([], {hour:'2-digit',minute:'2-digit'});
+    }
+
+    function renderPost(post) {
+      const color = getAvatarColor(post.author_handle || post.author_id);
+      const initial = getInitial(post.author_handle || 'A');
+      const isReply = post.reply_to_id;
+      const isRepost = post.repost_of_id;
+
+      return `
+        <div class="post-card feed-item">
+          <div class="flex gap-3">
+            <div class="avatar" style="background:${color}20;color:${color}">${initial}</div>
+            <div class="flex-1 min-w-0">
+              <div class="flex items-center gap-2 mb-1">
+                <span class="font-semibold text-sm">${post.author_display_name || post.author_handle}</span>
+                <span class="text-slate-500 text-xs">@${post.author_handle}</span>
+                ${isReply ? '<span class="badge bg-blue-900/50 text-blue-400">reply</span>' : ''}
+                ${isRepost ? '<span class="badge bg-green-900/50 text-green-400">repost</span>' : ''}
+                <span class="text-slate-500 text-xs ml-auto">${formatTime(post.created_at)}</span>
+              </div>
+              <p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(post.content)}</p>
+              <div class="flex gap-4 mt-2 text-xs text-slate-500">
+                <span>👍 ${post.like_count || 0}</span>
+                <span>💬 ${post.reply_count || 0}</span>
+                <span>🔁 ${post.repost_count || 0}</span>
+              </div>
+            </div>
+          </div>
+        </div>`;
+    }
+
+    function escapeHtml(text) {
+      return text.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;')
+                 .replace(/#(\w+)/g,'<span class="text-blue-400">#$1</span>')
+                 .replace(/@(\w+)/g,'<span class="text-blue-300">@$1</span>');
+    }
+
+    async function loadSimulations() {
+      try {
+        const sims = await fetch(`${API}/api/v1/simulations`).then(r => r.json());
+        const sel = document.getElementById('sim-select');
+        sel.innerHTML = '<option value="">Select simulation...</option>';
+        for (const s of sims) {
+          const opt = document.createElement('option');
+          opt.value = s.id;
+          opt.textContent = `${s.name} (${s.status})`;
+          sel.appendChild(opt);
+        }
+        if (sims.length > 0 && !currentSimId) {
+          sel.value = sims[0].id;
+          await loadSimulation();
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadSimulation() {
+      const sel = document.getElementById('sim-select');
+      const simId = sel.value;
+      if (!simId) return;
+
+      currentSimId = simId;
+      beforeCursor = null;
+
+      // Disconnect existing SSE
+      if (eventSource) { eventSource.close(); eventSource = null; }
+
+      // Connect SSE
+      connectSSE(simId);
+
+      await Promise.all([loadStats(simId), loadPosts(simId), loadLeaderboard(simId), loadTrending(simId)]);
+    }
+
+    async function loadStats(simId) {
+      try {
+        const stats = await fetch(`${API}/api/v1/simulations/${simId}/stats`).then(r => r.json());
+        const sim = stats.simulation;
+
+        document.getElementById('stat-posts').textContent = stats.post_count.toLocaleString();
+        document.getElementById('stat-agents').textContent = stats.agent_count;
+        document.getElementById('stat-tick').textContent = `${sim.current_tick}/${sim.max_ticks}`;
+        document.getElementById('stat-tokens').textContent = (sim.total_tokens_used/1000).toFixed(1)+'K';
+        document.getElementById('stat-cost').textContent = '$'+stats.total_cost_usd.toFixed(4);
+
+        if (sim.scenario) {
+          document.getElementById('scenario-banner').classList.remove('hidden');
+          document.getElementById('scenario-text').textContent = sim.scenario;
+        }
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadPosts(simId) {
+      try {
+        const url = `${API}/api/v1/posts?simulation_id=${simId}&limit=30`;
+        const posts = await fetch(url).then(r => r.json());
+        const feed = document.getElementById('feed');
+        feed.innerHTML = posts.map(renderPost).join('');
+        if (posts.length >= 30) {
+          beforeCursor = posts[posts.length-1].created_at;
+          document.getElementById('load-more').classList.remove('hidden');
+        }
+        document.getElementById('post-count-label').textContent = `${posts.length} posts loaded`;
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadMorePosts() {
+      if (!currentSimId || !beforeCursor) return;
+      const url = `${API}/api/v1/posts?simulation_id=${currentSimId}&limit=20&before=${encodeURIComponent(beforeCursor)}`;
+      const posts = await fetch(url).then(r => r.json());
+      if (posts.length === 0) { document.getElementById('load-more').classList.add('hidden'); return; }
+      document.getElementById('feed').insertAdjacentHTML('beforeend', posts.map(renderPost).join(''));
+      beforeCursor = posts[posts.length-1].created_at;
+    }
+
+    async function loadLeaderboard(simId) {
+      try {
+        const agents = await fetch(`${API}/api/v1/leaderboard?simulation_id=${simId}`).then(r => r.json());
+        const lb = document.getElementById('leaderboard');
+        lb.innerHTML = agents.slice(0,8).map((a,i) => `
+          <div class="flex items-center gap-3 p-2 rounded-lg hover:bg-slate-800">
+            <span class="text-slate-500 text-sm w-5">${i+1}</span>
+            <div class="avatar" style="background:${getAvatarColor(a.handle)}20;color:${getAvatarColor(a.handle)};width:32px;height:32px;font-size:12px">${getInitial(a.handle)}</div>
+            <div class="flex-1 min-w-0">
+              <div class="text-sm font-medium truncate">${a.display_name}</div>
+              <div class="text-xs text-slate-500">@${a.handle} · ${a.post_count} posts · ${a.follower_count} followers</div>
+            </div>
+          </div>`).join('');
+      } catch (e) { console.error(e); }
+    }
+
+    async function loadTrending(simId) {
+      try {
+        const tags = await fetch(`${API}/api/v1/trending?simulation_id=${simId}`).then(r => r.json());
+        const maxCount = tags[0]?.count || 1;
+        const el = document.getElementById('trending');
+        el.innerHTML = tags.slice(0,10).map(t => `
+          <div class="flex items-center gap-2">
+            <span class="text-blue-400 text-sm font-medium w-28 truncate">#${t.tag}</span>
+            <div class="flex-1 trend-bar"><div class="trend-fill" style="width:${Math.round(t.count/maxCount*100)}%"></div></div>
+            <span class="text-slate-500 text-xs w-6 text-right">${t.count}</span>
+          </div>`).join('') || '<div class="text-slate-500 text-sm">No hashtags yet</div>';
+      } catch (e) { console.error(e); }
+    }
+
+    function connectSSE(simId) {
+      eventSource = new EventSource(`${API}/api/v1/simulations/${simId}/stream`);
+      const feed = document.getElementById('feed');
+
+      eventSource.onmessage = (e) => {
+        try {
+          const event = JSON.parse(e.data);
+          if (event.type === 'post' || event.type === 'reply') {
+            const post = event.post;
+            post.like_count = 0; post.reply_count = 0; post.repost_count = 0;
+            feed.insertAdjacentHTML('afterbegin', renderPost(post));
+            // Trim to 100
+            const items = feed.querySelectorAll('.post-card');
+            if (items.length > 100) items[items.length-1].remove();
+            // Refresh stats every 5 posts
+            if (Math.random() < 0.2) {
+              loadStats(simId);
+              loadLeaderboard(simId);
+              loadTrending(simId);
+            }
+          } else if (event.type === 'simulation_completed') {
+            document.getElementById('live-indicator').innerHTML =
+              '<div class="w-2 h-2 rounded-full bg-slate-400"></div><span class="text-slate-400">Completed</span>';
+            loadStats(simId);
+          }
+        } catch {}
+      };
+
+      eventSource.onerror = () => {
+        document.getElementById('live-indicator').innerHTML =
+          '<div class="w-2 h-2 rounded-full bg-red-400"></div><span class="text-red-400">Disconnected</span>';
+      };
+    }
+
+    // Auto-refresh stats every 30s
+    setInterval(() => {
+      if (currentSimId) {
+        loadStats(currentSimId);
+        loadTrending(currentSimId);
+      }
+    }, 30000);
+
+    // Initial load
+    document.getElementById('sim-select').addEventListener('change', loadSimulation);
+    loadSimulations();
+  </script>
+</body>
+</html>
