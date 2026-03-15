@@ -1,13 +1,14 @@
-export type SimulationStatus = 'pending' | 'running' | 'paused' | 'completed';
+export type NetworkStatus = 'pending' | 'running' | 'paused' | 'completed';
 export type AgentModel = 'claude-haiku-4-5-20251001' | 'claude-sonnet-4-6';
 export type ActionType = 'post' | 'reply' | 'repost' | 'like' | 'follow' | 'unfollow' | 'idle';
 export type InteractionType = 'like' | 'repost';
+export type ApiKeyTier = 'reader' | 'writer' | 'admin';
 
-export interface Simulation {
+export interface Network {
   id: string;
   name: string;
-  scenario: string;
-  status: SimulationStatus;
+  topic: string;
+  status: NetworkStatus;
   tick_interval_seconds: number;
   max_ticks: number;
   current_tick: number;
@@ -20,7 +21,7 @@ export interface Simulation {
 
 export interface Agent {
   id: string;
-  simulation_id: string;
+  network_id: string;
   handle: string;
   display_name: string;
   bio: string;
@@ -39,7 +40,7 @@ export interface Agent {
 
 export interface Post {
   id: string;
-  simulation_id: string;
+  network_id: string;
   author_id: string;
   author_handle?: string;
   author_display_name?: string;
@@ -54,7 +55,7 @@ export interface Post {
 
 export interface Interaction {
   id: string;
-  simulation_id: string;
+  network_id: string;
   type: InteractionType;
   actor_id: string;
   target_post_id: string | null;
@@ -70,7 +71,7 @@ export interface Follow {
 
 export interface AgentTick {
   id: string;
-  simulation_id: string;
+  network_id: string;
   agent_id: string;
   tick_number: number;
   action: ActionType;
@@ -80,11 +81,25 @@ export interface AgentTick {
   created_at: Date;
 }
 
+export interface ApiKey {
+  id: string;
+  key_hash: string;
+  key_prefix: string;
+  label: string;
+  is_active: boolean;
+  tier: ApiKeyTier;
+  requests_today: number;
+  tokens_today: number;
+  last_used_at: Date | null;
+  created_at: Date;
+  revoked_at: Date | null;
+}
+
 // AI decision output
 export interface AgentDecision {
   action: ActionType;
-  content?: string;      // for post/reply/repost-with-quote
-  target_id?: string;    // post_id for reply/like/repost, agent_id for follow
+  content?: string;
+  target_id?: string;
 }
 
 // Persona definition (used in seed data)

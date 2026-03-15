@@ -2,11 +2,22 @@ import { Redis } from 'ioredis';
 import { env } from '../env.js';
 import { logger } from '../lib/logger.js';
 
-export const redis = new Redis(env.REDIS_URL, {
-  maxRetriesPerRequest: 3,
-  lazyConnect: true,
-});
+function makeRedis(url: string, opts: object = {}): Redis {
+  const parsed = new URL(url);
+  const isTLS = parsed.protocol === 'rediss:';
+  return new Redis({
+    host: parsed.hostname,
+    port: parseInt(parsed.port || (isTLS ? '6380' : '6379'), 10),
+    username: parsed.username || undefined,
+    password: parsed.password ? decodeURIComponent(parsed.password) : undefined,
+    tls: isTLS ? {} : undefined,
+    maxRetriesPerRequest: 3,
+    lazyConnect: true,
+    ...opts,
+  });
+}
 
+export const redis = makeRedis(env.REDIS_URL);
 redis.on('error', (err: Error) => logger.error({ err }, 'Redis error'));
 redis.on('connect', () => logger.info('Redis connected'));
 
@@ -15,8 +26,7 @@ export const feedCache = {
   key: (agentId: string) => `feed:${agentId}`,
 
   async get(agentId: string): Promise<string[]> {
-    const raw = await redis.lrange(feedCache.key(agentId), 0, 49);
-    return raw;
+    return redis.lrange(feedCache.key(agentId), 0, 49);
   },
 
   async push(followeeId: string, postId: string, followerIds: string[]): Promise<void> {
@@ -25,24 +35,21 @@ export const feedCache = {
     for (const followerId of followerIds) {
       const key = feedCache.key(followerId);
       pipeline.lpush(key, postId);
-      pipeline.ltrim(key, 0, 99); // keep last 100 posts per feed
-      pipeline.expire(key, 3600 * 24); // 24hr TTL
+      pipeline.ltrim(key, 0, 99);
+      pipeline.expire(key, 3600 * 24);
     }
     await pipeline.exec();
   },
 };
 
-// SSE event bus (pub/sub for real-time dashboard)
+// SSE pub/sub — separate connections required by Redis protocol
 export const pubsub = {
-  publisher: new Redis(env.REDIS_URL, { lazyConnect: true }),
-  subscriber: new Redis(env.REDIS_URL, { lazyConnect: true }),
+  publisher:  makeRedis(env.REDIS_URL),
+  subscriber: makeRedis(env.REDIS_URL),
 
-  channel: (simulationId: string) => `sim:${simulationId}:events`,
+  channel: (networkId: string) => `net:${networkId}:events`,
 
-  async publish(simulationId: string, event: object): Promise<void> {
-    await pubsub.publisher.publish(
-      pubsub.channel(simulationId),
-      JSON.stringify(event),
-    );
+  async publish(networkId: string, event: object): Promise<void> {
+    await pubsub.publisher.publish(pubsub.channel(networkId), JSON.stringify(event));
   },
 };
