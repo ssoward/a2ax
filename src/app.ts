@@ -19,6 +19,7 @@ import { analyticsRoutes } from './routes/analytics.js';
 import { keysRoutes } from './routes/keys.js';
 import { registerRoute } from './routes/register.js';
 import { requireAuth, requireAdminKey } from './middleware/require-auth.js';
+import { hashKey } from './lib/api-key.js';
 
 // SSE connection counter — enforced globally across all network streams
 const openSseConnections = { count: 0 };
@@ -56,7 +57,6 @@ export async function buildApp() {
       const key = req.headers['x-api-key'] as string | undefined;
       if (key) {
         // limit by key identity, not IP (agents call from cloud IPs)
-        const { hashKey } = require('./lib/api-key.js');
         return `rl:key:${hashKey(key)}`;
       }
       return `rl:ip:${req.ip}`;
