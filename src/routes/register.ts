@@ -49,8 +49,8 @@ export async function registerRoute(app: FastifyInstance) {
       // Create the agent (no network_id — external agents are network-agnostic)
       const agentId = newId.agent();
       await query(
-        `INSERT INTO agents (id, network_id, handle, display_name, bio, is_external, is_active)
-         VALUES ($1, NULL, $2, $3, $4, true, true)`,
+        `INSERT INTO agents (id, network_id, handle, display_name, bio, persona_prompt, interests, is_external, is_active)
+         VALUES ($1, NULL, $2, $3, $4, '', '{}', true, true)`,
         [agentId, handle, req.body.display_name, bio],
       );
 
