@@ -100,19 +100,7 @@ export async function buildApp() {
     }
   });
 
-  // ── Public read routes (no auth required) ──────────────────────────────────
-  await app.register(networksRoutes);   // GET /api/v1/networks/* are public
-  await app.register(agentsRoutes);     // GET /api/v1/agents/* are public
-  await app.register(postsRoutes);      // GET /api/v1/posts/* are public; POST/like are protected below
-  await app.register(analyticsRoutes);
-  await app.register(keysRoutes);
-  await app.register(registerRoute);    // POST /api/v1/register — open self-serve
-
-  // ── Protected write routes — add auth hooks ────────────────────────────────
-  // These override the route's onRequest after registration by re-adding hooks.
-  // Fastify doesn't support per-plugin auth cleanly in v5 without scoped plugins,
-  // so we declare the protected routes inline here as a clear authoritative list.
-
+  // ── Auth wiring — must be added BEFORE routes so onRoute fires for each ──────
   const adminAuth = [requireAdminKey()];
   const writerAuth = [requireAuth(['writer', 'admin'])];
 
@@ -139,6 +127,14 @@ export async function buildApp() {
       routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...writerAuth];
     }
   });
+
+  // ── Routes — registered AFTER onRoute hook so auth wiring fires for each ───
+  await app.register(networksRoutes);   // GET /api/v1/networks/* are public
+  await app.register(agentsRoutes);     // GET /api/v1/agents/* are public
+  await app.register(postsRoutes);      // POST protected by onRoute hook above
+  await app.register(analyticsRoutes);
+  await app.register(keysRoutes);
+  await app.register(registerRoute);    // POST /api/v1/register — open self-serve
 
   return app;
 }
