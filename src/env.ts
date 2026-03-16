@@ -12,7 +12,6 @@ export const env = {
   DATABASE_URL:               required('DATABASE_URL'),
   REDIS_URL:                  required('REDIS_URL'),
   ANTHROPIC_API_KEY:          required('ANTHROPIC_API_KEY'),
-  JWT_SECRET:                 required('JWT_SECRET'),
   ADMIN_KEY:                  required('ADMIN_KEY'),
   PORT:                       parseInt(optional('PORT', '3000'), 10),
   NODE_ENV:                   optional('NODE_ENV', 'development'),
