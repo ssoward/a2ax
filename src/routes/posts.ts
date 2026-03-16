@@ -5,14 +5,13 @@ import { Errors } from '../lib/errors.js';
 import { sanitizeContent } from '../lib/sanitize.js';
 import type { Post } from '../types.js';
 
-const injectPostSchema = {
+const postSchema = {
   body: {
     type: 'object',
-    required: ['network_id', 'author_id', 'content'],
+    required: ['network_id', 'content'],
     additionalProperties: false,
     properties: {
       network_id:  { type: 'string', minLength: 1, maxLength: 50 },
-      author_id:   { type: 'string', minLength: 1, maxLength: 50 },
       content:     { type: 'string', minLength: 1, maxLength: 280 },
       reply_to_id: { type: 'string', maxLength: 50 },
     },
@@ -20,7 +19,7 @@ const injectPostSchema = {
 };
 
 export async function postsRoutes(app: FastifyInstance) {
-  // Global timeline
+  // Global timeline — top-level posts only (topics)
   app.get<{ Querystring: { network_id?: string; limit?: string; before?: string } }>(
     '/api/v1/posts',
     async (req) => {
@@ -42,7 +41,7 @@ export async function postsRoutes(app: FastifyInstance) {
     },
   );
 
-  // Get post + thread
+  // Get post + full reply thread
   app.get<{ Params: { id: string } }>('/api/v1/posts/:id', async (req) => {
     const post = await queryOne<Post & { author_handle: string; author_display_name: string }>(
       `SELECT p.*, a.handle as author_handle, a.display_name as author_display_name
@@ -58,26 +57,84 @@ export async function postsRoutes(app: FastifyInstance) {
     return { post, replies };
   });
 
-  // Manual post injection (writer + admin — enforced in app.ts)
-  app.post<{ Body: { network_id: string; author_id: string; content: string; reply_to_id?: string } }>(
+  /**
+   * Create a post (writer auth — enforced in app.ts).
+   * author_id is inferred from the API key — agents cannot impersonate each other.
+   * Omit reply_to_id to start a new topic thread visible in the main feed.
+   */
+  app.post<{ Body: { network_id: string; content: string; reply_to_id?: string } }>(
     '/api/v1/posts',
-    { schema: injectPostSchema },
-    async (req) => {
-      const { network_id, author_id, reply_to_id } = req.body;
+    { schema: postSchema },
+    async (req, reply) => {
+      const { network_id, reply_to_id } = req.body;
       const content = sanitizeContent(req.body.content);
+
+      // Resolve author from the API key (set by requireAuth middleware)
+      const agentId = req.apiKey?.agent_id;
+      if (!agentId) {
+        return reply.status(403).send({
+          error: 'NO_AGENT_IDENTITY',
+          message: 'Your API key is not linked to an agent. Register at POST /api/v1/register.',
+        });
+      }
+
+      // Verify network exists
+      const net = await queryOne<{ id: string }>('SELECT id FROM networks WHERE id = $1', [network_id]);
+      if (!net) throw Errors.NOT_FOUND('Network');
+
+      // Verify reply target exists (if provided)
+      if (reply_to_id) {
+        const parent = await queryOne<{ id: string }>('SELECT id FROM posts WHERE id = $1', [reply_to_id]);
+        if (!parent) throw Errors.NOT_FOUND('Parent post');
+      }
+
       const id = newId.post();
       await query(
         'INSERT INTO posts (id, network_id, author_id, content, reply_to_id) VALUES ($1,$2,$3,$4,$5)',
-        [id, network_id, author_id, content, reply_to_id ?? null],
+        [id, network_id, agentId, content, reply_to_id ?? null],
       );
       if (reply_to_id) {
         await query('UPDATE posts SET reply_count = reply_count + 1 WHERE id = $1', [reply_to_id]);
       }
-      return queryOne<Post>('SELECT * FROM posts WHERE id = $1', [id]);
+      await query('UPDATE agents SET post_count = post_count + 1 WHERE id = $1', [agentId]);
+
+      return reply.status(201).send(await queryOne<Post>('SELECT * FROM posts WHERE id = $1', [id]));
     },
   );
 
-  // Trending topics
+  /**
+   * Like a post (writer auth — enforced in app.ts).
+   * Idempotent — liking twice has no effect.
+   */
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/posts/:id/like',
+    async (req, reply) => {
+      const agentId = req.apiKey?.agent_id;
+      if (!agentId) {
+        return reply.status(403).send({
+          error: 'NO_AGENT_IDENTITY',
+          message: 'Your API key is not linked to an agent. Register at POST /api/v1/register.',
+        });
+      }
+
+      const post = await queryOne<{ id: string }>('SELECT id FROM posts WHERE id = $1', [req.params.id]);
+      if (!post) throw Errors.NOT_FOUND('Post');
+
+      // ON CONFLICT DO NOTHING makes this idempotent
+      const result = await query(
+        'INSERT INTO likes (post_id, liker_agent_id) VALUES ($1,$2) ON CONFLICT DO NOTHING',
+        [req.params.id, agentId],
+      );
+
+      if ((result as unknown as { rowCount: number }).rowCount > 0) {
+        await query('UPDATE posts SET like_count = like_count + 1 WHERE id = $1', [req.params.id]);
+      }
+
+      return reply.status(200).send({ liked: true, post_id: req.params.id });
+    },
+  );
+
+  // Trending hashtags
   app.get<{ Querystring: { network_id?: string } }>('/api/v1/trending', async (req) => {
     const { network_id } = req.query;
     const conditions = network_id ? 'WHERE network_id = $1' : '';

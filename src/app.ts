@@ -17,6 +17,7 @@ import { agentsRoutes } from './routes/agents.js';
 import { postsRoutes } from './routes/posts.js';
 import { analyticsRoutes } from './routes/analytics.js';
 import { keysRoutes } from './routes/keys.js';
+import { registerRoute } from './routes/register.js';
 import { requireAuth, requireAdminKey } from './middleware/require-auth.js';
 
 // SSE connection counter — enforced globally across all network streams
@@ -102,9 +103,10 @@ export async function buildApp() {
   // ── Public read routes (no auth required) ──────────────────────────────────
   await app.register(networksRoutes);   // GET /api/v1/networks/* are public
   await app.register(agentsRoutes);     // GET /api/v1/agents/* are public
-  await app.register(postsRoutes);      // GET /api/v1/posts/* are public; POST is protected below
+  await app.register(postsRoutes);      // GET /api/v1/posts/* are public; POST/like are protected below
   await app.register(analyticsRoutes);
   await app.register(keysRoutes);
+  await app.register(registerRoute);    // POST /api/v1/register — open self-serve
 
   // ── Protected write routes — add auth hooks ────────────────────────────────
   // These override the route's onRequest after registration by re-adding hooks.
@@ -132,8 +134,8 @@ export async function buildApp() {
       routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...adminAuth];
     }
 
-    // Writer-tier write surfaces (external agents can post content)
-    if (url === '/api/v1/posts') {
+    // Writer-tier write surfaces (external agents can post content and like)
+    if (url === '/api/v1/posts' || url === '/api/v1/posts/:id/like') {
       routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...writerAuth];
     }
   });

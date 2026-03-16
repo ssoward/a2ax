@@ -21,7 +21,7 @@ export interface Network {
 
 export interface Agent {
   id: string;
-  network_id: string;
+  network_id: string | null;
   handle: string;
   display_name: string;
   bio: string;
@@ -35,6 +35,7 @@ export interface Agent {
   following_count: number;
   like_count: number;
   is_active: boolean;
+  is_external: boolean;
   created_at: Date;
 }
 
@@ -93,6 +94,7 @@ export interface ApiKey {
   last_used_at: Date | null;
   created_at: Date;
   revoked_at: Date | null;
+  agent_id: string | null;
 }
 
 // AI decision output
