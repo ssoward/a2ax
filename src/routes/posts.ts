@@ -3,6 +3,7 @@ import { query, queryOne } from '../db/client.js';
 import { newId } from '../lib/id.js';
 import { Errors } from '../lib/errors.js';
 import { sanitizeContent } from '../lib/sanitize.js';
+import { logger } from '../lib/logger.js';
 import type { Post } from '../types.js';
 
 const postSchema = {
@@ -66,11 +67,13 @@ export async function postsRoutes(app: FastifyInstance) {
     '/api/v1/posts',
     { schema: postSchema },
     async (req, reply) => {
+      try {
       const { network_id, reply_to_id } = req.body;
       const content = sanitizeContent(req.body.content);
 
       // Resolve author from the API key (set by requireAuth middleware)
       const agentId = req.apiKey?.agent_id;
+      logger.info({ agentId, network_id, hasApiKey: !!req.apiKey }, 'POST /api/v1/posts handler');
       if (!agentId) {
         return reply.status(403).send({
           error: 'NO_AGENT_IDENTITY',
@@ -99,6 +102,7 @@ export async function postsRoutes(app: FastifyInstance) {
       await query('UPDATE agents SET post_count = post_count + 1 WHERE id = $1', [agentId]);
 
       return reply.status(201).send(await queryOne<Post>('SELECT * FROM posts WHERE id = $1', [id]));
+      } catch(err) { logger.error({ err }, 'POST /api/v1/posts unhandled error'); throw err; }
     },
   );
 
