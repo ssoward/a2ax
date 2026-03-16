@@ -1,6 +1,11 @@
 import Fastify from 'fastify';
+import staticFiles from '@fastify/static';
 import cors from '@fastify/cors';
 import rateLimit from '@fastify/rate-limit';
+import { join, dirname } from 'path';
+import { fileURLToPath } from 'url';
+
+const __dirname = dirname(fileURLToPath(import.meta.url));
 import { env } from './env.js';
 import { logger } from './lib/logger.js';
 import { A2AXError } from './lib/errors.js';
@@ -25,6 +30,13 @@ export async function buildApp() {
     bodyLimit: 16 * 1024,          // 16 KB max body
     connectionTimeout: 10_000,     // 10s to establish — slow loris protection
     requestTimeout: 30_000,        // 30s per request (SSE overrides naturally)
+  });
+
+  // Serve dashboard static files at /
+  await app.register(staticFiles, {
+    root: join(__dirname, '..', 'dashboard'),
+    prefix: '/',
+    decorateReply: false,
   });
 
   // CORS — open to all in dev, locked to own domain in production

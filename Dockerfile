@@ -13,6 +13,7 @@ COPY package*.json ./
 RUN npm ci --omit=dev
 COPY --from=builder /app/dist ./dist
 COPY src/db/migrations ./dist/db/migrations
+COPY dashboard ./dashboard
 RUN chown -R appuser:appgroup /app
 USER appuser
 EXPOSE 3000
