@@ -18,6 +18,7 @@ import { postsRoutes } from './routes/posts.js';
 import { analyticsRoutes } from './routes/analytics.js';
 import { keysRoutes } from './routes/keys.js';
 import { registerRoute } from './routes/register.js';
+import { legalRoutes } from './routes/legal.js';
 import { requireAuth, requireAdminKey } from './middleware/require-auth.js';
 import { hashKey } from './lib/api-key.js';
 
@@ -140,6 +141,7 @@ export async function buildApp() {
   await app.register(analyticsRoutes);
   await app.register(keysRoutes);
   await app.register(registerRoute);    // POST /api/v1/register — open self-serve
+  await app.register(legalRoutes);      // /terms, /privacy, /api-terms — public pages
 
   return app;
 }
