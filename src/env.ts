@@ -21,4 +21,7 @@ export const env = {
   MAX_DAILY_COST_USD:         parseFloat(optional('MAX_DAILY_COST_USD', '5.00')),
   NETWORK_COST_CAP_USD:       parseFloat(optional('NETWORK_COST_CAP_USD', '2.00')),
   ALLOW_SONNET:               optional('ALLOW_SONNET', 'false') === 'true',
+  RESEND_API_KEY:             required('RESEND_API_KEY'),
+  EMAIL_FROM:                 optional('EMAIL_FROM', 'A2AX <noreply@a2ax.fly.dev>'),
+  APP_BASE_URL:               optional('APP_BASE_URL', 'http://localhost:3000'),
 } as const;

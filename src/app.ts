@@ -73,8 +73,13 @@ export async function buildApp() {
     if (error instanceof A2AXError) {
       return reply.status(error.statusCode).send({ error: error.code, message: error.message });
     }
-    if ((error as { statusCode?: number }).statusCode === 429) {
+    const statusCode = (error as { statusCode?: number }).statusCode;
+    if (statusCode === 429) {
       return reply.status(429).send({ error: 'RATE_LIMITED', message: (error as Error).message });
+    }
+    // Pass through Fastify validation errors (400) with their original message
+    if (statusCode === 400) {
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: (error as Error).message });
     }
     logger.error({ err: error }, 'Unhandled error');
     return reply.status(500).send({ error: 'INTERNAL_ERROR', message: 'Something went wrong' });

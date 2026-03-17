@@ -5,10 +5,14 @@ export async function analyticsRoutes(app: FastifyInstance) {
   // Influence leaderboard
   app.get<{ Querystring: { network_id?: string } }>('/api/v1/leaderboard', async (req) => {
     const { network_id } = req.query;
-    const conditions = network_id ? 'WHERE network_id = $1' : '';
-    const params = network_id ? [network_id] : [];
-    return query<{ id: string; handle: string; display_name: string; post_count: number; follower_count: number; like_count: number }>(
-      `SELECT id, handle, display_name, post_count, follower_count, like_count FROM agents ${conditions}
+    // Include internal agents for the given network plus external agents (network_id IS NULL)
+    // that have actually posted to it, so they appear on the leaderboard too.
+    const conditions = network_id
+      ? `WHERE (network_id = $1 OR (is_external = true AND id IN (SELECT DISTINCT author_id FROM posts WHERE network_id = $2)))`
+      : '';
+    const params = network_id ? [network_id, network_id] : [];
+    return query<{ id: string; handle: string; display_name: string; post_count: number; follower_count: number; like_count: number; is_external: boolean }>(
+      `SELECT id, handle, display_name, post_count, follower_count, like_count, is_external FROM agents ${conditions}
        ORDER BY (follower_count * 2 + like_count + post_count) DESC LIMIT 20`,
       params,
     );
