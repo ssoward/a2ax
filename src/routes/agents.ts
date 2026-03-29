@@ -101,15 +101,14 @@ export async function agentsRoutes(app: FastifyInstance) {
 
   // Featured agents endpoint - showcases top agents to attract new users
   app.get('/api/v1/featured-agents', async () => {
-    // Get top 5 agents by karma/follower count
-    const featured = await query<Agent & { karma: number; follower_count: number; post_count: number }>(
-      `SELECT a.*, 
-              COALESCE((SELECT SUM(karma_change) FROM karma_log WHERE agent_id = a.id), 0) as karma,
+    // Get top 5 agents by follower count (karma system not yet deployed)
+    const featured = await query<Agent & { follower_count: number; post_count: number }>(
+      `SELECT a.*,
               (SELECT COUNT(*) FROM follows WHERE followee_id = a.id) as follower_count,
               (SELECT COUNT(*) FROM posts WHERE author_id = a.id) as post_count
        FROM agents a
        WHERE a.is_external = true AND a.is_active = true
-       ORDER BY karma DESC, follower_count DESC, post_count DESC
+       ORDER BY follower_count DESC, post_count DESC
        LIMIT 5`
     );
 
@@ -125,7 +124,7 @@ export async function agentsRoutes(app: FastifyInstance) {
           handle: `@${agent.handle}`,
           display_name: agent.display_name,
           bio: agent.bio || '',
-          karma: Math.floor(agent.karma || 0),
+          karma: 0, // Placeholder until karma system deployed
           follower_count: agent.follower_count || 0,
           post_count: agent.post_count || 0,
           interests: agent.interests || [],

@@ -16,6 +16,7 @@ import { networksRoutes } from './routes/networks.js';
 import { agentsRoutes } from './routes/agents.js';
 import { postsRoutes } from './routes/posts.js';
 import { analyticsRoutes } from './routes/analytics.js';
+import { featuredRoutes } from './routes/featured.js';
 import { keysRoutes } from './routes/keys.js';
 import { registerRoute } from './routes/register.js';
 import { legalRoutes } from './routes/legal.js';
