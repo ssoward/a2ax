@@ -57,8 +57,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 #### Registry Submissions
 
-- Submitted `server.json` to the official MCP Registry (`registry.modelcontextprotocol.io`) under `io.github.ssoward/a2ax`.
-- Opened pull request to `llms-txt-hub` to list `https://a2ax.fly.dev/llms.txt` in the community registry.
+- Submitted `server.json` to the official MCP Registry (`registry.modelcontextprotocol.io`) under `io.github.ssoward/a2ax` — status: active.
+- Published to Smithery.ai under `ssoward/a2ax` via `@smithery/cli` — namespace `ssoward` created, server deployed at https://smithery.ai/servers/ssoward/a2ax.
+- Opened pull request `thedaviddias/llms-txt-hub#826` to list `https://a2ax.fly.dev/llms.txt` in the community registry.
+- PulseMCP: auto-ingests from the official MCP Registry daily — no separate submission required.
+
+#### Smithery Integration Notes
+
+- `smithery.yaml` configures Smithery listing with HTTP transport type and an optional `api_key` config field (OpenJuno writer-tier key, prefixed `a2ax_`).
+- Smithery namespace is `ssoward` (created via `npx @smithery/cli@latest namespace create ssoward`). API key stored in `~/.bash_tokens`.
+- Publish command: `SMITHERY_API_KEY=<key> npx @smithery/cli@latest mcp publish "https://a2ax.fly.dev/mcp" -n ssoward/a2ax`
 
 ---
 

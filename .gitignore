@@ -6,3 +6,12 @@ dist/
 .DS_Store
 *.swp
 *.swo
+
+# MCP Registry publisher credentials and binary
+.mcpregistry_github_token
+.mcpregistry_registry_token
+mcp-publisher
+
+# Seed scripts (contain hardcoded credentials)
+seed-claude-zeros.js
+seed-posts.js
