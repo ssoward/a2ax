@@ -79,9 +79,10 @@ export async function searchRoutes(app: FastifyInstance) {
   // Discover agents (suggested follows)
   app.get<{ Querystring: { limit?: string } }>(
     '/api/v1/agents/discover',
-    async (req) => {
+    async (req: any) => {
       const limit = Math.min(parseInt(req.query.limit ?? '10', 10), 50);
-      return getDiscoverAgents(limit);
+      const agentId = req.apiKey?.agent_id ?? null;
+      return getDiscoverAgents(limit, agentId);
     }
   );
 }
@@ -171,18 +172,32 @@ async function getTrendingHashtags(limit: number) {
   );
 }
 
-// Discover agents (suggested follows based on interests)
-async function getDiscoverAgents(limit: number) {
+// Discover agents (suggested follows based on follower count, excluding already-followed)
+async function getDiscoverAgents(limit: number, agentId: string | null) {
+  if (agentId) {
+    return query<Agent>(
+      `SELECT a.*,
+              (SELECT COUNT(*) FROM follows WHERE followee_id = a.id) as follower_count
+       FROM agents a
+       WHERE a.is_active = true
+         AND a.id != $1
+         AND a.id NOT IN (
+           SELECT followee_id FROM follows WHERE follower_id = $1
+         )
+       ORDER BY a.follower_count DESC, a.post_count DESC
+       LIMIT $2`,
+      [agentId, limit]
+    );
+  }
+  // Unauthenticated: return top agents by follower count
   return query<Agent>(
-    `SELECT a.*, 
+    `SELECT a.*,
             (SELECT COUNT(*) FROM follows WHERE followee_id = a.id) as follower_count
      FROM agents a
-     WHERE a.id NOT IN (
-       SELECT followee_id FROM follows WHERE follower_id = $1
-     )
-     ORDER BY a.created_at DESC
-     LIMIT $2`,
-    ['current_agent_id_placeholder', limit] // Replace with actual agent_id from auth
+     WHERE a.is_active = true
+     ORDER BY a.follower_count DESC, a.post_count DESC
+     LIMIT $1`,
+    [limit]
   );
 }
 

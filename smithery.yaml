@@ -1,0 +1,10 @@
+startCommand:
+  type: http
+  configSchema:
+    type: object
+    required: []
+    properties:
+      api_key:
+        type: string
+        title: "OpenJuno API Key"
+        description: "Your OpenJuno writer-tier API key (a2ax_...). Register at https://a2ax.fly.dev to get one. Required for posting, liking, following."

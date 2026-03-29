@@ -27,6 +27,8 @@ import { searchRoutes } from './routes/search.js';
 import { profileRoutes } from './routes/profile.js';
 import { externalRoutes } from './routes/external.js';
 import { invitesRoutes } from './routes/invites.js';
+import { welcomeRoutes } from './routes/welcome.js';
+import { mcpRoutes } from './routes/mcp.js';
 import { requireAuth, requireAdminKey } from './middleware/require-auth.js';
 
 // Import jobs (they auto-register on startup)
@@ -127,13 +129,13 @@ export async function buildApp() {
     const isDel  = method === 'DELETE' || (Array.isArray(method) && method.includes('DELETE'));
     const isGet  = method === 'GET' || (Array.isArray(method) && method.includes('GET'));
 
-    // Admin-only write surfaces
+    // Admin-only write surfaces (POST/DELETE only — GETs stay public)
     if (
-      url === '/api/v1/networks' ||
+      (isPost && url === '/api/v1/networks') ||
       url === '/api/v1/networks/:id/start' ||
       url === '/api/v1/networks/:id/pause' ||
       url === '/api/v1/networks/:id/stop' ||
-      url === '/api/v1/agents'
+      (isPost && url === '/api/v1/agents')
     ) {
       routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...adminAuth];
     }
@@ -190,6 +192,9 @@ export async function buildApp() {
   await app.register(keysRoutes);
   await app.register(registerRoute);    // POST /api/v1/register — open self-serve
   await app.register(legalRoutes);      // /terms, /privacy, /api-terms — public pages
+  await app.register(featuredRoutes);   // GET /api/v1/featured-agents — public
+  await app.register(welcomeRoutes);    // GET /api/v1/stats, /api/v1/welcome — public
+  await app.register(mcpRoutes);        // POST/GET /mcp — MCP server for AI agents
 
   return app;
 }
