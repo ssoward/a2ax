@@ -19,7 +19,17 @@ import { analyticsRoutes } from './routes/analytics.js';
 import { keysRoutes } from './routes/keys.js';
 import { registerRoute } from './routes/register.js';
 import { legalRoutes } from './routes/legal.js';
+import { followsRoutes } from './routes/follows.js';
+import { feedRoutes } from './routes/feed.js';
+import { notificationsRoutes } from './routes/notifications.js';
+import { searchRoutes } from './routes/search.js';
+import { profileRoutes } from './routes/profile.js';
+import { externalRoutes } from './routes/external.js';
+import { invitesRoutes } from './routes/invites.js';
 import { requireAuth, requireAdminKey } from './middleware/require-auth.js';
+
+// Import jobs (they auto-register on startup)
+import './jobs/refresh-trending.js';
 import { hashKey } from './lib/api-key.js';
 
 // SSE connection counter — enforced globally across all network streams
@@ -114,8 +124,7 @@ export async function buildApp() {
     const { method, url } = routeOptions;
     const isPost = method === 'POST' || (Array.isArray(method) && method.includes('POST'));
     const isDel  = method === 'DELETE' || (Array.isArray(method) && method.includes('DELETE'));
-
-    if (!isPost && !isDel) return; // GET endpoints stay public
+    const isGet  = method === 'GET' || (Array.isArray(method) && method.includes('GET'));
 
     // Admin-only write surfaces
     if (
@@ -128,9 +137,40 @@ export async function buildApp() {
       routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...adminAuth];
     }
 
-    // Writer-tier write surfaces (external agents can post content and like)
-    if (url === '/api/v1/posts' || url === '/api/v1/posts/:id/like') {
+    // Writer-tier write surfaces (external agents can post content, like, and repost)
+    if (
+      url === '/api/v1/posts' ||
+      url === '/api/v1/posts/:id/like' ||
+      url === '/api/v1/posts/:id/repost'
+    ) {
+      if (isPost || isDel) {
+        routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...writerAuth];
+      }
+    }
+
+    // Follow system endpoints — require authentication
+    if (url === '/api/v1/agents/:id/follow' || url === '/api/v1/agents/:id/follows') {
+      if (isPost || isDel) {
+        routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...writerAuth];
+      }
+    }
+
+    // Notification endpoints — require authentication
+    if (url === '/api/v1/notifications' || 
+        url === '/api/v1/notifications/:id/read' || 
+        url === '/api/v1/notifications/mark-all-read' ||
+        url === '/api/v1/notifications/:id') {
       routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...writerAuth];
+    }
+
+    // External agent endpoints — require writer auth
+    if (url.startsWith('/api/v1/external/')) {
+      routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...writerAuth];
+    }
+
+    // Invitation endpoints — admin only (all methods)
+    if (url.startsWith('/api/v1/invites')) {
+      routeOptions.onRequest = [...(routeOptions.onRequest as [] ?? []), ...adminAuth];
     }
   });
 
@@ -138,6 +178,13 @@ export async function buildApp() {
   await app.register(networksRoutes);   // GET /api/v1/networks/* are public
   await app.register(agentsRoutes);     // GET /api/v1/agents/* are public
   await app.register(postsRoutes);      // POST protected by onRoute hook above
+  await app.register(followsRoutes);    // Follow system - POST/DELETE protected
+  await app.register(feedRoutes);       // Global feed endpoints - public
+  await app.register(notificationsRoutes); // Notifications - POST protected
+  await app.register(searchRoutes);     // Search & discovery - public
+  await app.register(profileRoutes);    // Agent profiles - public
+  await app.register(externalRoutes);   // External agent network join/create - writer protected
+  await app.register(invitesRoutes);    // Invitation system - admin/writer protected
   await app.register(analyticsRoutes);
   await app.register(keysRoutes);
   await app.register(registerRoute);    // POST /api/v1/register — open self-serve

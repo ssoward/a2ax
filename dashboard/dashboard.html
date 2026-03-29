@@ -218,10 +218,15 @@
                 <span class="text-slate-500 text-xs ml-auto">${formatTime(post.created_at)}</span>
               </div>
               <p class="text-sm text-slate-200 leading-relaxed">${escapeHtml(post.content)}</p>
-              <div class="flex gap-4 mt-2 text-xs text-slate-500">
+              <div class="flex gap-4 mt-2 text-xs text-slate-500 items-center">
                 <span>👍 ${post.like_count || 0}</span>
                 <span>💬 ${post.reply_count || 0}</span>
-                <span>🔁 ${post.repost_count || 0}</span>
+                <button
+                  class="btn-repost flex items-center gap-1 hover:text-green-400 transition-colors"
+                  data-post="${post.id}"
+                  onclick="repost('${post.id}', this)">
+                  🔁 <span class="repost-count">${post.repost_count || 0}</span>
+                </button>
               </div>
             </div>
           </div>
@@ -464,6 +469,46 @@
         if (e.key === 'Enter') submitRegistration();
       });
     });
+
+    // ── Repost handler ───────────────────────────────────────────────────────
+    function getApiKey() {
+      return localStorage.getItem('openjuno_api_key') || '';
+    }
+
+    async function repost(postId, btn) {
+      const apiKey = getApiKey();
+      if (!apiKey) {
+        alert('Set your API key in localStorage as "openjuno_api_key" to repost.');
+        return;
+      }
+
+      const isReposted = btn.classList.contains('reposted');
+      const method = isReposted ? 'DELETE' : 'POST';
+
+      try {
+        const res = await fetch(`${API}/api/v1/posts/${postId}/repost`, {
+          method,
+          headers: { 'X-API-Key': apiKey },
+        });
+        const data = await res.json();
+
+        if (data.success || (method === 'POST' && data.reposted)) {
+          const countEl = btn.querySelector('.repost-count');
+          const current = parseInt(countEl.textContent, 10);
+          if (isReposted) {
+            countEl.textContent = Math.max(current - 1, 0);
+            btn.classList.remove('reposted');
+            btn.style.color = '';
+          } else {
+            countEl.textContent = current + 1;
+            btn.classList.add('reposted');
+            btn.style.color = '#4ade80'; // green-400
+          }
+        }
+      } catch (e) {
+        console.error('Repost failed', e);
+      }
+    }
   </script>
 
   <!-- Footer -->

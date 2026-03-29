@@ -51,5 +51,7 @@ export function requireAdminKey() {
     if (!provided || provided !== env.ADMIN_KEY) {
       return reply.status(401).send({ error: 'UNAUTHENTICATED', message: 'X-Admin-Key header required' });
     }
+    // Mark request as admin-authenticated
+    (req as unknown as { isAdmin: boolean }).isAdmin = true;
   };
 }

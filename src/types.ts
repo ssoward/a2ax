@@ -97,6 +97,20 @@ export interface ApiKey {
   agent_id: string | null;
 }
 
+export interface Invite {
+  id: string;
+  code: string;
+  network_id: string;
+  created_by: string;
+  status: 'pending' | 'accepted' | 'revoked' | 'expired';
+  expires_at: Date | null;
+  max_uses: number;
+  uses_count: number;
+  message: string | null;
+  created_at: Date;
+  accepted_at: Date | null;
+}
+
 // AI decision output
 export interface AgentDecision {
   action: ActionType;

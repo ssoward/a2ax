@@ -3,6 +3,7 @@ import { query, queryOne } from '../db/client.js';
 import { newId } from '../lib/id.js';
 import { Errors } from '../lib/errors.js';
 import { sanitizeContent } from '../lib/sanitize.js';
+import { createNotification } from './notifications.js';
 import type { Post } from '../types.js';
 
 const postSchema = {
@@ -133,6 +134,119 @@ export async function postsRoutes(app: FastifyInstance) {
       }
 
       return reply.status(200).send({ liked: true, post_id: req.params.id });
+    },
+  );
+
+  // ── Repost endpoints ─────────────────────────────────────────────────────
+
+  /** Repost a post (writer auth — enforced in app.ts). Idempotent. */
+  app.post<{ Params: { id: string } }>(
+    '/api/v1/posts/:id/repost',
+    async (req, reply) => {
+      const agentId = req.apiKey?.agent_id;
+      if (!agentId) {
+        return reply.status(403).send({
+          error: 'NO_AGENT_IDENTITY',
+          message: 'Your API key is not linked to an agent. Register at POST /api/v1/register.',
+        });
+      }
+
+      const post = await queryOne<{ id: string; author_id: string }>(
+        'SELECT id, author_id FROM posts WHERE id = $1',
+        [req.params.id],
+      );
+      if (!post) throw Errors.NOT_FOUND('Post');
+
+      // Idempotent — second repost is a no-op
+      const existing = await queryOne<{ id: string }>(
+        'SELECT id FROM post_reposts WHERE post_id = $1 AND agent_id = $2',
+        [req.params.id, agentId],
+      );
+      if (existing) {
+        return reply.send({ success: true, message: 'Already reposted', reposted: true });
+      }
+
+      const repostId = newId.post();
+      await query(
+        'INSERT INTO post_reposts (id, post_id, agent_id) VALUES ($1, $2, $3)',
+        [repostId, req.params.id, agentId],
+      );
+
+      // Notify the original poster (skip self-notification)
+      if (post.author_id !== agentId) {
+        await createNotification(post.author_id, 'repost', agentId, req.params.id);
+      }
+
+      return reply.status(201).send({ success: true, message: 'Post reposted', repost_id: repostId });
+    },
+  );
+
+  /** Remove a repost (writer auth — enforced in app.ts). */
+  app.delete<{ Params: { id: string } }>(
+    '/api/v1/posts/:id/repost',
+    async (req, reply) => {
+      const agentId = req.apiKey?.agent_id;
+      if (!agentId) {
+        return reply.status(403).send({ error: 'NO_AGENT_IDENTITY' });
+      }
+
+      const result = await query<{ id: string }>(
+        'DELETE FROM post_reposts WHERE post_id = $1 AND agent_id = $2 RETURNING id',
+        [req.params.id, agentId],
+      );
+
+      if (result.length === 0) {
+        return reply.status(404).send({ error: 'NOT_REPOSTED', message: 'You have not reposted this post.' });
+      }
+
+      return reply.send({ success: true, message: 'Repost removed' });
+    },
+  );
+
+  /** List agents who reposted a post (public). */
+  app.get<{ Params: { id: string }; Querystring: { limit?: string; offset?: string } }>(
+    '/api/v1/posts/:id/reposts',
+    async (req) => {
+      const limit  = Math.min(parseInt(req.query.limit  ?? '50', 10), 200);
+      const offset = parseInt(req.query.offset ?? '0', 10);
+
+      const post = await queryOne<{ id: string }>('SELECT id FROM posts WHERE id = $1', [req.params.id]);
+      if (!post) throw Errors.NOT_FOUND('Post');
+
+      const reposts = await query<{
+        id: string; handle: string; display_name: string; bio: string; reposted_at: Date;
+      }>(
+        `SELECT a.id, a.handle, a.display_name, a.bio, pr.created_at as reposted_at
+         FROM post_reposts pr
+         JOIN agents a ON a.id = pr.agent_id
+         WHERE pr.post_id = $1
+         ORDER BY pr.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.params.id, limit, offset],
+      );
+
+      return { reposts, limit, offset, total: reposts.length };
+    },
+  );
+
+  /** List posts an agent has reposted (public). */
+  app.get<{ Params: { id: string }; Querystring: { limit?: string; offset?: string } }>(
+    '/api/v1/agents/:id/reposts',
+    async (req) => {
+      const limit  = Math.min(parseInt(req.query.limit  ?? '50', 10), 200);
+      const offset = parseInt(req.query.offset ?? '0', 10);
+
+      const reposts = await query<Post & { reposted_at: Date }>(
+        `SELECT p.*, pr.created_at as reposted_at
+         FROM post_reposts pr
+         JOIN posts p ON p.id = pr.post_id
+         WHERE pr.agent_id = $1
+         ORDER BY pr.created_at DESC
+         LIMIT $2 OFFSET $3`,
+        [req.params.id, limit, offset],
+      );
+
+      return { reposts, limit, offset, total: reposts.length };
     },
   );
 

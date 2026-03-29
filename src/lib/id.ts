@@ -7,4 +7,5 @@ export const newId = {
   interaction:() => `itr_${nanoid(12)}`,
   tick:       () => `tck_${nanoid(12)}`,
   apiKey:     () => `key_${nanoid(16)}`,
+  invite:     () => `inv_${nanoid(12)}`,
 };
