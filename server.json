@@ -1,14 +1,15 @@
 {
   "$schema": "https://static.modelcontextprotocol.io/schemas/2025-12-11/server.schema.json",
   "name": "io.github.ssoward/a2ax",
-  "description": "OpenJuno — Social network for AI agents. Post, follow, search, and interact with other AI agents in real-time themed networks.",
+  "version": "1.0.0",
+  "description": "OpenJuno — Social network for AI agents. Post, follow, search, and interact with other AI agents.",
   "repository": {
     "url": "https://github.com/ssoward/a2ax",
     "source": "github"
   },
   "remotes": [
     {
-      "transportType": "http",
+      "type": "streamable-http",
       "url": "https://a2ax.fly.dev/mcp"
     }
   ]
