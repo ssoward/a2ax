@@ -22,6 +22,7 @@ import { randomUUID } from 'crypto';
 import { query, queryOne } from '../db/client.js';
 import { logger } from '../lib/logger.js';
 import { hashKey } from '../lib/api-key.js';
+import { validateApiKeyFormat, sanitizeInput, validateSearchQuery, safeError } from '../lib/security.js';
 
 // ── Tool schemas ─────────────────────────────────────────────────────────────
 
@@ -244,11 +245,22 @@ async function handleTool(name: string, args: Record<string, unknown>) {
 
       case 'openjuno_create_post': {
         const { api_key, network_id, content, reply_to_id } = args as any;
-        if (!api_key) return err('api_key is required to post');
+        
+        // Validate API key format before DB lookup
+        if (!api_key || typeof api_key !== 'string') return err('api_key is required');
+        if (!validateApiKeyFormat(api_key)) return err('Invalid API key format');
+        
         const auth = await validateApiKey(api_key);
         if (!auth) return err('Invalid or inactive API key');
-        if (!content || String(content).length > 280) return err('content must be 1–280 characters');
+        
+        // Validate and sanitize content
+        if (!content || typeof content !== 'string') return err('content is required');
+        const sanitizedContent = sanitizeInput(String(content), 280);
+        if (sanitizedContent.length < 1) return err('content must be at least 1 character');
+        if (sanitizedContent.length > 280) return err('content must be 280 characters or less');
 
+        // Validate network_id format
+        if (!network_id || typeof network_id !== 'string') return err('network_id is required');
         const net = await queryOne<{ id: string }>('SELECT id FROM networks WHERE id = $1', [network_id]);
         if (!net) return err(`Network ${network_id} not found. Use openjuno_get_networks to get valid network IDs.`);
 
@@ -256,7 +268,7 @@ async function handleTool(name: string, args: Record<string, unknown>) {
         const postId = newId.post();
         await query(
           `INSERT INTO posts (id, network_id, author_id, content, reply_to_id) VALUES ($1,$2,$3,$4,$5)`,
-          [postId, network_id, auth.agent_id, content, reply_to_id ?? null],
+          [postId, network_id, auth.agent_id, sanitizedContent, reply_to_id ?? null],
         );
         const post = await queryOne(`SELECT p.*, a.handle AS author_handle FROM posts p JOIN agents a ON a.id = p.author_id WHERE p.id = $1`, [postId]);
         return ok({ success: true, post });
@@ -367,57 +379,85 @@ async function handleTool(name: string, args: Record<string, unknown>) {
 
       case 'openjuno_search': {
         const { q, type = 'all', limit = 10 } = args as any;
-        if (!q || String(q).length < 2) return err('q must be at least 2 characters');
-        const lim = Math.min(Number(limit), 20);
+        
+        // Validate search query with enhanced security
+        const queryValidation = validateSearchQuery(q);
+        if (!queryValidation.valid) return err(queryValidation.error ?? 'Invalid search query');
+        const sanitizedQuery = queryValidation.sanitized!;
+        
+        // Validate type parameter
+        const validTypes = ['all', 'posts', 'agents', 'hashtags'];
+        const searchType = validTypes.includes(type) ? type : 'all';
+        
+        // Validate and sanitize limit
+        const lim = Math.min(Math.max(1, Number(limit) || 10), 20);
 
-        if (type === 'posts' || type === 'all') {
+        if (searchType === 'posts' || searchType === 'all') {
           const posts = await query(
             `SELECT p.*, a.handle AS author_handle,
                     ts_rank(p.search_vector, plainto_tsquery('english', $1)) AS rank
              FROM posts p JOIN agents a ON a.id = p.author_id
              WHERE p.search_vector @@ plainto_tsquery('english', $1)
              ORDER BY rank DESC, p.created_at DESC LIMIT $2`,
-            [q, lim],
+            [sanitizedQuery, lim],
           );
-          if (type === 'posts') return ok(posts);
+          if (searchType === 'posts') return ok(posts);
 
           const agents = await query(
             `SELECT id, handle, display_name, bio, follower_count
              FROM agents WHERE search_vector @@ plainto_tsquery('english', $1)
              ORDER BY follower_count DESC LIMIT $2`,
-            [q, lim],
+            [sanitizedQuery, lim],
           );
           return ok({ posts, agents });
         }
 
-        if (type === 'agents') {
+        if (searchType === 'agents') {
           const agents = await query(
             `SELECT id, handle, display_name, bio, follower_count
              FROM agents WHERE search_vector @@ plainto_tsquery('english', $1)
              ORDER BY follower_count DESC LIMIT $2`,
-            [q, lim],
+            [sanitizedQuery, lim],
           );
           return ok(agents);
         }
 
-        if (type === 'hashtags') {
+        if (searchType === 'hashtags') {
           const tags = await query(
             `SELECT tag, post_count, last_used FROM hashtags WHERE tag ILIKE $1
              ORDER BY post_count DESC LIMIT $2`,
-            [`%${q}%`, lim],
+            [`%${sanitizedQuery}%`, lim],
           );
           return ok(tags);
         }
 
-        return err(`Unknown search type: ${type}`);
+        return err('Invalid search type');
       }
 
       default:
         return err(`Unknown tool: ${name}`);
     }
   } catch (e: any) {
-    logger.error({ err: e, tool: name }, 'MCP tool error');
-    return err(e.message ?? 'Internal error');
+    // Log full error details internally for debugging
+    logger.error({ err: e, tool: name, args: sanitizeInput(JSON.stringify(args), 500) }, 'MCP tool error');
+    
+    // Return safe, user-facing error message (never leak stack traces or internals)
+    const safeMessage = e.message && typeof e.message === 'string' 
+      ? sanitizeInput(e.message, 200)
+      : 'Internal error';
+    
+    // Map common error patterns to safe messages
+    if (e.code === 'ECONNREFUSED' || e.code === 'ETIMEDOUT') {
+      return err('Database connection error. Please try again.');
+    }
+    if (e.code === '23505') { // Unique violation
+      return err('Resource already exists');
+    }
+    if (e.code === '23503') { // Foreign key violation
+      return err('Referenced resource not found');
+    }
+    
+    return err(safeMessage);
   }
 }
 

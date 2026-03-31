@@ -2,6 +2,7 @@ import type { FastifyInstance } from 'fastify';
 import { query, queryOne } from '../db/client.js';
 import { newId } from '../lib/id.js';
 import { Errors } from '../lib/errors.js';
+import { sanitizeInput, validateApiKeyFormat } from '../lib/security.js';
 import type { Agent, Post } from '../types.js';
 import { env } from '../env.js';
 
@@ -52,11 +53,19 @@ export async function agentsRoutes(app: FastifyInstance) {
     persona_prompt: string; interests: string[]; model?: string; token_budget?: number;
   } }>('/api/v1/agents', { schema: createAgentSchema }, async (req) => {
     const { network_id, handle, display_name, bio, persona_prompt, interests, model, token_budget } = req.body;
+    
+    // Additional sanitization beyond schema validation
+    const safeHandle = sanitizeInput(handle, 30);
+    const safeDisplayName = sanitizeInput(display_name, 50);
+    const safeBio = sanitizeInput(bio ?? '', 160);
+    const safePersonaPrompt = sanitizeInput(persona_prompt, 2000);
+    const safeInterests = (interests || []).map(i => sanitizeInput(i, 50)).filter(i => i.length > 0);
+    
     const id = newId.agent();
     await query(
       `INSERT INTO agents (id, network_id, handle, display_name, bio, persona_prompt, interests, model, token_budget)
        VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)`,
-      [id, network_id, handle, display_name, bio, persona_prompt, interests,
+      [id, network_id, safeHandle, safeDisplayName, safeBio, safePersonaPrompt, safeInterests,
        model ?? 'claude-haiku-4-5-20251001',
        Math.min(token_budget ?? env.DEFAULT_AGENT_TOKEN_BUDGET, 10_000)],
     );

@@ -82,21 +82,53 @@ export async function buildApp() {
     }),
   });
 
-  // Global error handler
+  // Global error handler - enhanced to never leak internal details
   app.setErrorHandler((error, _req, reply) => {
+    // Log full error internally for debugging
+    logger.error({ err: error, url: _req?.url, method: _req?.method }, 'Request error');
+    
+    // Custom app errors - safe to return as-is (already sanitized)
     if (error instanceof A2AXError) {
       return reply.status(error.statusCode).send({ error: error.code, message: error.message });
     }
+    
     const statusCode = (error as { statusCode?: number }).statusCode;
+    
+    // Rate limiting
     if (statusCode === 429) {
-      return reply.status(429).send({ error: 'RATE_LIMITED', message: (error as Error).message });
+      return reply.status(429).send({ 
+        error: 'RATE_LIMITED', 
+        message: 'Too many requests. Please slow down.',
+        retryAfter: 60 
+      });
     }
-    // Pass through Fastify validation errors (400) with their original message
+    
+    // Validation errors - sanitize message to prevent leakage
     if (statusCode === 400) {
-      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: (error as Error).message });
+      const safeMessage = (error as Error).message?.slice(0, 200) || 'Invalid request';
+      return reply.status(400).send({ error: 'VALIDATION_ERROR', message: safeMessage });
     }
-    logger.error({ err: error }, 'Unhandled error');
-    return reply.status(500).send({ error: 'INTERNAL_ERROR', message: 'Something went wrong' });
+    
+    // Not found
+    if (statusCode === 404) {
+      return reply.status(404).send({ error: 'NOT_FOUND', message: 'Resource not found' });
+    }
+    
+    // Unauthorized
+    if (statusCode === 401) {
+      return reply.status(401).send({ error: 'UNAUTHORIZED', message: 'Authentication required' });
+    }
+    
+    // Forbidden
+    if (statusCode === 403) {
+      return reply.status(403).send({ error: 'FORBIDDEN', message: 'Access denied' });
+    }
+    
+    // All other errors - generic message, never leak stack traces or internals
+    return reply.status(500).send({ 
+      error: 'INTERNAL_ERROR', 
+      message: 'An unexpected error occurred. Please try again.' 
+    });
   });
 
   // Health check — verifies DB + Redis connectivity
